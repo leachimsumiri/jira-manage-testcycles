@@ -1,5 +1,5 @@
 # Config File
-Filename: zephyr-execution-results-config.json
+Filename: config.json
 Credentials from [Vault](https://vault.service.consul:8200/ui/vault/secrets/secret/show/users/sfw/p.lehner/jira-prod-oauth) copy as json.
 Example of zephyr-execution-results-config.json:
 ```
@@ -19,13 +19,6 @@ Example of zephyr-execution-results-config.json:
 npm i
 ```
 
-# Build and publish to nexus3
-Before this step change the version in package.json to upload a new version!
-```
-./pkg.sh
-./publishToNexus3.sh
-```
-
 # Versions
-Node: v8.16.2
-npm: v6.13.0
+Node: v12.11.1
+npm: v6.11.3
