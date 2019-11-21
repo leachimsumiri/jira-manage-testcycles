@@ -19,6 +19,22 @@ Example of config.json:
 npm install
 ```
 
+optionally you can modify the pkg.sh file for your operating system and run it to produce an executable file.
+
+# Usage
+
+default is to clone all cycles and their folders from the version 'Testbasis GST' to a given version (parameter 1, non-optional).
+additionally you can choose to delete all cycles of specific version if you provide a second parameter called 'delete'. Be very careful with this option.
+
+```
+./index <Version> <delete>(optional)
+```
+
+if there was no executable file created:
+```
+node index.js <Version> <delete>(optional)
+```
+
 # Versions
 Node: v12.11.1
 npm: v6.11.3

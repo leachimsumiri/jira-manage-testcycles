@@ -1,14 +1,18 @@
 const JiraClient = require('evva-jira-connector');
 const fs = require('fs');
 const sw_version = require('./package.json');
-var cliInteract = require('cli-interact').getYesNo;
+var readlineSync = require('readline-sync');
 
 //process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const config_json = 'config.json'
 
 if(process.argv[2] == '-version' || process.argv[2] == '--version'){
   console.log(sw_version.version);
-  process.exit(1);
+  process.exit(0);
+}
+if(process.argv[2] == '-h' || process.argv[2] == '--help'){
+  console.log("default is to clone all cycles and their folders from the version 'Testbasis GST' to a given version (parameter 1, non-optional).\nadditionally you can choose to delete all cycles of specific version if you provide a second parameter called 'delete'. Be very careful with this option.");
+  process.exit(0);
 }
 if(fs.existsSync(process.cwd() + '/' + config_json) == false){
   console.log(config_json + ' not found!');
@@ -45,7 +49,7 @@ var jira = new JiraClient({
 });
 
 if (delete_param === 'delete'){
-  var answer = cliInteract('Do you really want to delete all Testcycles from Version: ' + version_param + '? This is irreversible! ');
+  var answer = readlineSync.keyInYN('Do you really want to delete all Testcycles from Version: ' + version_param + '? This is irreversible!');
   if (answer) {
     console.log('I hope you know what you are doing..\n');
     jira.project.getVersions({
@@ -66,7 +70,7 @@ if (delete_param === 'delete'){
               process.exit(1);
             }
             //console.log(versions);
-            console.log("\nVersionID of '" + version_param + "' is: " + versionIdToDelete + "\n\nStart deleting cycles..");
+            console.log("VersionID of '" + version_param + "' is: " + versionIdToDelete + "\n\nStart deleting cycles..");
             jira.cycle.getCyclesOfVersion({
               versionid: versionIdToDelete
             }, function (error, getCyclesOfVersionResult) {
@@ -110,9 +114,7 @@ if (delete_param === 'delete'){
     console.log('Aborting..');
     process.exit(1);
   }
-}
-
-if (delete_param === undefined){
+} else if (delete_param === undefined){
   jira.project.getVersions({
     projectIdOrKey: xs3ProjectId
   }, function (error, getVersionsResult) {
@@ -248,4 +250,7 @@ if (delete_param === undefined){
           );
         }
   });
+} else {
+  console.log("'" + delete_param + "' is not a valid parameter.\nUse 'delete' for deleting all cycles from a version.\nKeep undefined for cloning all cycles from 'Testbasis GST' to a specific version.");
+  process.exit(1);
 }
