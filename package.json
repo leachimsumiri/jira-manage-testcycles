@@ -1,6 +1,6 @@
 {
   "name": "zephyr-clone-cycles",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "description": "App to clone all testcycles of a specific version and remove the 'clone' prefix from their foldernames.",
   "main": "index.js",
   "scripts": {
@@ -13,6 +13,11 @@
   "author": "IRIMUS Michael / EVVA Wien",
   "license": "ISC",
   "dependencies": {
+    "cli-interact": "^0.1.9",
     "evva-jira-connector": "git+https://bach1.evva.com/bitbucket/scm/~m.irimus/evva-jira-connector.git#feature/cloneTestcycles"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://bach1.evva.com/bitbucket/scm/xsys/zephyr-clone-testcycles.git"
   }
 }
