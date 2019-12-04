@@ -1,7 +1,7 @@
 # Config File
 Filename: config.json
 Credentials from [Vault](https://vault.service.consul:8200/ui/vault/secrets/secret/show/users/sfw/p.lehner/jira-prod-oauth) copy as json.
-Example of zephyr-execution-results-config.json:
+Example of config.json:
 ```
 {
   "consumer_key": "00000000-0000-0000-0000-000000000000",
@@ -16,9 +16,28 @@ Example of zephyr-execution-results-config.json:
 
 # Installation
 ```
-npm i
+npm install
 ```
 
+<<<<<<< HEAD
+=======
+optionally you can modify the pkg.sh file for your operating system and run it to produce an executable file.
+
+# Usage
+
+default is to clone all cycles and their folders from the version 'Testbasis GST' to a given version (parameter 1, non-optional).
+additionally you can choose to delete all cycles of specific version if you provide a second parameter called 'delete'. Be very careful with this option.
+
+```
+./index <Version> <delete>(optional)
+```
+
+if there was no executable file created:
+```
+node index.js <Version> <delete>(optional)
+```
+
+>>>>>>> develop
 # Versions
 Node: v12.11.1
 npm: v6.11.3

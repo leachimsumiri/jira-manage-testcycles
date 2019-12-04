@@ -1,4 +1,7 @@
 config.json
 node_modules
 index
+<<<<<<< HEAD
 .DS_Store
+=======
+>>>>>>> develop
