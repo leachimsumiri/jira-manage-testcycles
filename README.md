@@ -19,8 +19,6 @@ Example of config.json:
 npm install
 ```
 
-<<<<<<< HEAD
-=======
 optionally you can modify the pkg.sh file for your operating system and run it to produce an executable file.
 
 # Usage
@@ -37,7 +35,6 @@ if there was no executable file created:
 node index.js <Version> <delete>(optional)
 ```
 
->>>>>>> develop
 # Versions
 Node: v12.11.1
 npm: v6.11.3
