@@ -2,6 +2,7 @@ const JiraClient = require('evva-jira-connector');
 const fs = require('fs');
 const sw_version = require('./package.json');
 var readlineSync = require('readline-sync');
+const async = require('async'), operations = [];;
 
 //process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const config_json = 'config.json'
@@ -21,9 +22,11 @@ if(fs.existsSync(process.cwd() + '/' + config_json) == false){
 const config = JSON.parse(fs.readFileSync(process.cwd() + '/' + config_json), 'utf8');
 
 const xs3ProjectId = 11600;
-const testbasisVersionId = 14919;
-var newVersionId = -1;
-var versionIdToDelete = -1;
+const testbasisVersionId = 14919;//15410
+var newVersionId = -1, oldVersionId = -1, versionIdToDelete = -1, global_projectId = -1;
+var cycleIterator = 0;
+var oldCycleIds, oldCycles;
+var cycleIdsToDelete = [];
 
 const version_param = process.argv[2];
 const delete_param = process.argv[3];
@@ -49,208 +52,251 @@ var jira = new JiraClient({
 });
 
 if (delete_param === 'delete'){
+  deleteCycles();
+} else if (delete_param === undefined){
+  cloneAndUpdateFoldernames();
+} else {
+  console.log("'" + delete_param + "' is not a valid parameter.\nUse 'delete' for deleting all cycles from a version.\nKeep undefined for cloning all cycles from 'Testbasis GST' to a specific version.");
+  process.exit(1);
+}
+
+//main clone function
+function cloneAndUpdateFoldernames() {
+  async.waterfall([
+    async function getVersions(){
+      var versions = await getVersionIds(xs3ProjectId);
+      var baseVersion = versions.baseVersion;
+      return [baseVersion, xs3ProjectId];
+    },
+    async function getCyclesOfVersion([versionId, projectId]){
+      var baseCycles = await _getCyclesOfVersion(versionId);
+      var baseCycleIds = Object.keys(baseCycles)
+      return [baseCycles, newVersionId, projectId, baseCycleIds];
+    },
+    async function cloneCycle([baseCycles, versionId, projectId, baseCycleIds]){
+      var jobDetails = [];
+      for (var j in baseCycles){
+        var jobProgressToken = await cloning(j, baseCycles, versionId, projectId, baseCycleIds);
+        var temp = await getJobDetails(jobProgressToken)
+        jobDetails.push(temp.entityId);
+        var cycleInformation = await getCycleInformation(jobDetails[cycleIterator]);
+        cycleIterator++;
+      }
+
+      var folderI = 0;
+      for (var j in baseCycles){
+        var folders = await getFolders(jobDetails[folderI], projectId, versionId);
+        await iterateFolders(folders, jobDetails[folderI], projectId, versionId);
+        folderI++;
+      }
+    }
+    ], function(err, result) {
+      if (err) {
+        console.log(err);
+        process.exit(1);
+      } else {}
+    });
+}
+
+//main delete function
+function deleteCycles(){
   var answer = readlineSync.keyInYN('Do you really want to delete all Testcycles from Version: ' + version_param + '? This is irreversible!');
   if (answer) {
-    console.log('I hope you know what you are doing..\n');
+    console.log('\nI hope you know what you are doing..\n');
+    async.waterfall([
+      async function getVersions(){
+        var versions = await getVersionIds(xs3ProjectId);
+        var paramVersion = versions.newVersion;
+        return paramVersion;
+      },
+      async function getCyclesOfVersion(versionId){
+        var newCycles = await _getCyclesOfVersion(versionId);
+        var newCycleIds = Object.keys(newCycles)
+        return newCycleIds;
+      },
+      async function deleteCycles(cycleIds){
+        for (var i = 0; i < cycleIds.length; i++) {
+          await _deleteCycle(cycleIds[i]);
+          if (i==cycleIds.length-1) {
+            console.log("\n" + cycleIds.length + " cycles deleted.");
+          }
+        }
+        if(cycleIds.length==0) console.log(cycleIds.length + " cycles deleted.");
+      }
+    ], function(err, result) {
+        if (err) {
+          console.log(err);
+          process.exit(1);
+        } else {}
+      }
+    );
+  } else {
+    console.log('Aborting..');
+    process.exit(1);
+  }
+}
+
+//base functions
+//vvvvvvvvvvvvvv
+
+function getVersionIds (projectId) {
+  return new Promise((r, rj) => {
     jira.project.getVersions({
-      projectIdOrKey: xs3ProjectId
+      projectIdOrKey: projectId
     }, function (error, getVersionsResult) {
         if (error) {
             console.log(error);
             process.exit(1);
           } else {
-            var versions = [];
             for (var i = 0; i < getVersionsResult.length; i++) {
-              if(getVersionsResult[i].name == version_param){
-                versionIdToDelete = getVersionsResult[i].id;
-              }
+              if(getVersionsResult[i].name == version_param) newVersionId = getVersionsResult[i].id;
             }
-            if (versionIdToDelete == -1) {
-              console.log("\nVersion with name: '" + version_param + "' was not found.\nNo Cycles deleted.\n");
+            if (newVersionId == -1) {
+              console.log("\nVersion with name: '" + version_param + "' was not found.\nExiting.\n");
               process.exit(1);
             }
-            //console.log(versions);
-            console.log("VersionID of '" + version_param + "' is: " + versionIdToDelete + "\n\nStart deleting cycles..");
-            jira.cycle.getCyclesOfVersion({
-              versionid: versionIdToDelete
-            }, function (error, getCyclesOfVersionResult) {
-                if (error) {
-                  console.log(error);
-                  process.exit(1);
-                } else {
-                  var keys = [];
-                  for(var k in getCyclesOfVersionResult) keys.push(k);
-                  cycleIds = Object.keys(getCyclesOfVersionResult);
-                  cycleIds.splice(cycleIds.length-2,2); //strip the last two elements of the Array since the last one is the element count of the result and the second last is the hardcoded 'Ad Hoc' Cycle.
-                  console.log("Cycle Ids to be deleted:");
-                  console.log(cycleIds + "\n");
-                  //console.log(getCyclesOfVersionResult);
-
-                  for (var i = 0; i < cycleIds.length; i++) {
-                    (function(i){
-                      jira.cycle.deleteCycle({
-                        cycleid: cycleIds[i]
-                      }, function (error, deleteCycleResult){
-                        if (error) {
-                          console.log(error);
-                          process.exit(1);
-                        } else {
-                          console.log("Cycle: " + cycleIds[i] + " deleted.");
-                          if (i==cycleIds.length-1) {
-                            setTimeout(function(){ console.log(cycleIds.length + " cycles deleted.") },1000);
-                          }
-                        }
-                      });
-                    })(i);
-                  }
-                  if(cycleIds.length==0) console.log(cycleIds.length + " cycles deleted.");
-                }
-              }
-            );
+            console.log("\nVersionID of '" + version_param + "' is: " + newVersionId + "\nContinuing..\n");
+            let promiseResolution = {
+              newVersion : newVersionId,
+              baseVersion : testbasisVersionId,
+            }
+            r(promiseResolution);
           }
-        }
-      );
-  } else {
-    console.log('Aborting..');
-    process.exit(1);
-  }
-} else if (delete_param === undefined){
-  jira.project.getVersions({
-    projectIdOrKey: xs3ProjectId
-  }, function (error, getVersionsResult) {
-      if (error) {
+      });
+  });
+}
+
+function _getCyclesOfVersion (versionId){
+  return new Promise((r, rj) => {
+    jira.cycle.getCyclesOfVersion({
+      versionid: versionId
+    }, function (error, getCyclesOfVersionResult) {
+        if (error) {
           console.log(error);
           process.exit(1);
         } else {
-          var versions = [];
-          for (var i = 0; i < getVersionsResult.length; i++) {
-            if(getVersionsResult[i].name == version_param) newVersionId = getVersionsResult[i].id;
-            versions.push(getVersionsResult[i].name);
-            //console.log(getVersionsResult[i].name);
+          var cycleIterator = 0;
+          delete getCyclesOfVersionResult['recordsCount'];
+          delete getCyclesOfVersionResult['-1'];
+          cycleIds = Object.keys(getCyclesOfVersionResult);
+          cyclesObj = getCyclesOfVersionResult;
+          for(var k in cyclesObj) {
+            console.log("Found Cycle: " + cyclesObj[k].name + "  (ID: " + cycleIds[cycleIterator] + ")");
+            cycleIterator++;
           }
-          if (newVersionId == -1) {
-            console.log("\nVersion with name: '" + version_param + "' was not found.\nExiting.\n");
-            process.exit(1);
-          }
-          //console.log(versions);
-          console.log("\nVersionID of '" + version_param + "' is: " + newVersionId + "\nContinuing..\n");
-          jira.cycle.getCyclesOfVersion({
-            versionid: testbasisVersionId
-          }, function (error, getCyclesOfVersionResult) {
-              if (error) {
-                console.log(error);
-                process.exit(1);
-              } else {
-                var keys = [];
-                for(var k in getCyclesOfVersionResult) keys.push(k);
-                cycleIds = Object.keys(getCyclesOfVersionResult);
-                cycleIds.splice(cycleIds.length-2,2); //strip the last two elements of the Array since the last one is the element count of the result and the second last is the hardcoded 'Ad Hoc' Cycle.
-                console.log("Cycle Ids to be cloned from Testbasis (VersionID " + testbasisVersionId + ") to new Version '" + version_param + "' :");
-                console.log(cycleIds + "\n");
-                console.log("Start Cloning, this may take some time...\n");
-
-                for (var i = 0; i < cycleIds.length; i++) {
-                  jira.cycle.getCycleInformation({
-                    cycleid: cycleIds[i]
-                  }, function (error, getCycleInformationResult){
-                    if (error) {
-                      console.log(error);
-                      process.exit(1);
-                    } else {
-                      console.log("Cloning Cycle: " + getCycleInformationResult.name);
-
-          // ----- Clone every Cycle
-                      jira.cycle.cloneCycle({
-                        clonedcycleid: getCycleInformationResult.id,
-                        cyclename: getCycleInformationResult.name,
-                        versionid: newVersionId,
-                        projectid: xs3ProjectId
-                      }, function (error, cloneCycleResult) {
-                        if (error) {
-                          console.log(error);
-                          process.exit(1);
-                        } else {
-                          //console.log("Clone Cycle Result:");
-                          //console.log(cloneCycleResult);
-
-          // ----- Get Details of Clone-Job to get the Cycle-ID
-                          jira.cycle.getJobDetails({
-                            jobprogresstoken: cloneCycleResult.jobProgressToken
-                          }, function (error, getJobDetailsResult) {
-                            if (error) {
-                              console.log(error);
-                              process.exit(1);
-                            } else {
-                              //console.log("\nGet Job Details Result:");
-                              //console.log(getJobDetailsResult);
-                              //console.log("Job Details Message: " + getJobDetailsResult.message);
-                              setTimeout(function(){
-                              jira.cycle.getCycleInformation({
-                                cycleid: getJobDetailsResult.entityId
-                              }, function (error, getNewCycleInformationResult){
-                                if (error) {
-                                  console.log(error);
-                                  process.exit(1);
-                                } else {
-                                  console.log("Cloned Cycle: " + getCycleInformationResult.name + " (id: " + getCycleInformationResult.id + ") to new Cycle: " + getNewCycleInformationResult.name + " (id: " + getJobDetailsResult.entityId + ")");
-
-          // ----- Get the Folders to later update the name of them
-                                  //setTimeout(function(){//folders are not created fast enough
-                                    jira.cycle.getFolders({
-                                      cycleid: getJobDetailsResult.entityId,
-                                      projectid: xs3ProjectId,
-                                      versionid: newVersionId
-                                    }, function (error, getFoldersResult) {
-                                      if (error) {
-                                        console.log(error);
-                                        process.exit(1);
-                                      } else {
-                                        //console.log("\nGet Folders Result:");
-                                        //console.log(getFoldersResult);
-                                        //console.log("\n" + getFoldersResult.length + " Folders found for Cycle: " + getNewCycleInformationResult.name);
-
-          // ----- Update Foldernames
-                                        for (var j = 0; j < getFoldersResult.length; j++) {
-                                          (function(j){
-                                            jira.cycle.updateFolderDetails({
-                                              folderid: getFoldersResult[j].folderId,
-                                              foldername: getFoldersResult[j].folderName.substr(6),//strip "Clone "
-                                              cycleid: getJobDetailsResult.entityId,
-                                              projectid: xs3ProjectId,
-                                              versionid: newVersionId
-                                            }, function (error, updateFolderDetailsResult) {
-                                              if (error) {
-                                                console.log(error);
-                                                process.exit(1);
-                                              } else {
-                                                //console.log("\nindex: " + j);
-                                                //console.log("Get Folders Result:");
-                                                //console.log(getFoldersResult);
-                                                //console.log("\nChanging Folder Names at Cycle: " + getNewCycleInformationResult.name);
-                                                //console.log("  Old Folder Name: " + getFoldersResult[j].folderName + "\n  New Folder Name: " + (updateFolderDetailsResult.responseMessage.substr(7)).substr(0,updateFolderDetailsResult.responseMessage.length-28));
-                                              }
-                                            });
-                                          })(j);
-                                        }
-                                      }
-                                    });
-                                  //}, 13000);
-                                }
-                              });
-                            }, 13000);//kann bei Testbasis (43 Cycles à 1-5 Folders atm) ewig dauern bis alle Folder erstellt sind
-                            }
-                          });
-                        }
-                      });
-                    }
-                  });
-                }
-              }
-            }
-          );
+          r(cyclesObj);
         }
+      });
   });
-} else {
-  console.log("'" + delete_param + "' is not a valid parameter.\nUse 'delete' for deleting all cycles from a version.\nKeep undefined for cloning all cycles from 'Testbasis GST' to a specific version.");
-  process.exit(1);
+}
+
+function cloning (j, oldCycles, versionId, projectId, oldCycleIds){
+  return new Promise((r, rj) => {
+    jira.cycle.cloneCycle({
+      clonedcycleid: oldCycleIds[cycleIterator],
+      cyclename: oldCycles[j].name,
+      versionid: versionId,
+      projectid: projectId
+    }, function (error, cloneCycleResult) {
+      if (error) {
+        console.log(error);
+        process.exit(1);
+      } else {
+        console.log("Cloned Cycle: " + oldCycles[j].name);
+        r(cloneCycleResult);
+      }
+    })
+  });
+}
+
+function getJobDetails(res){
+  return new Promise((r, rj) => {
+    jira.cycle.getJobDetails({
+      jobprogresstoken: res.jobProgressToken
+    }, function (error, getJobDetailsResult) {
+      if (error) {
+        console.log(error);
+        process.exit(1);
+      } else {
+        r(getJobDetailsResult);
+      }
+    })
+  });
+}
+
+function getCycleInformation(id){
+  return new Promise((r, rj) => {
+    jira.cycle.getCycleInformation({
+      cycleid: id
+    }, function (error, getNewCycleInformationResult){
+      if (error) {
+        console.log(error);
+        process.exit(1);
+      } else {
+        r(getNewCycleInformationResult);
+      }
+    })
+  });
+}
+
+function getFolders(id, xs3ProjectId, newVersionId){ 
+  return new Promise((r, rj) => {
+    jira.cycle.getFolders({
+      cycleid: id,
+      projectid: xs3ProjectId,
+      versionid: newVersionId
+    }, function (error, getFoldersResult) {
+      if (error) {
+        console.log(error);
+        process.exit(1);
+      } else {
+        r(getFoldersResult);
+      }
+    })
+  });
+}
+
+function iterateFolders(folders, jobdetails, xs3ProjectId, newVersionId){ 
+  return new Promise((r, rj) => {
+    for (var it = 0; it < folders.length; it++) {
+      updateFolders(it, folders, jobdetails, xs3ProjectId, newVersionId);
+    }
+    r();
+  });
+}
+
+function updateFolders(i, folders, cycleId, xs3ProjectId, newVersionId){ 
+  return new Promise((r, rj) => {
+    jira.cycle.updateFolderDetails({
+      folderid: folders[i].folderId,
+      foldername: folders[i].folderName.substr(6),//strip "Clone "
+      cycleid: cycleId,
+      projectid: xs3ProjectId,
+      versionid: newVersionId
+    }, function (error, updateFolderDetailsResult) {
+      if (error) {
+        console.log(error);
+        process.exit(1);
+      } else {
+        console.log(updateFolderDetailsResult.responseMessage + " From Cycle: " + updateFolderDetailsResult.cycleName);
+        r();
+      }
+    })
+  });
+}
+
+function _deleteCycle(cycleId) {
+  return new Promise((r, rj) => {
+    jira.cycle.deleteCycle({
+      cycleid: cycleId
+    }, function (error, deleteCycleResult){
+      if (error) {
+        console.log(error);
+        process.exit(1);
+      } else {
+        console.log("Cycle: " + cycleId + " deleted.");
+        r();
+      }
+    });
+  });
 }
