@@ -3,3 +3,4 @@ node_modules
 index
 build
 .DS_Store
+pw.json

@@ -6,6 +6,7 @@ const async = require('async'), operations = [];;
 
 //process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const config_json = 'config.json'
+const pw_json = 'pw.json'
 
 if(process.argv[2] == '-version' || process.argv[2] == '--version'){
   console.log(sw_version.version);
@@ -19,7 +20,9 @@ if(fs.existsSync(process.cwd() + '/' + config_json) == false){
   console.log(config_json + ' not found!');
   process.exit(1);
 }
+
 const config = JSON.parse(fs.readFileSync(process.cwd() + '/' + config_json), 'utf8');
+const pw = JSON.parse(fs.readFileSync(process.cwd() + '/' + pw_json), 'utf8');
 
 const xs3ProjectId = 11600;
 const testbasisVersionId = 14919;//15410
@@ -62,74 +65,83 @@ if (delete_param === 'delete'){
 
 //main clone function
 function cloneAndUpdateFoldernames() {
-  async.waterfall([
-    async function getVersions(){
-      var versions = await getVersionIds(xs3ProjectId);
-      var baseVersion = versions.baseVersion;
-      return [baseVersion, xs3ProjectId];
-    },
-    async function getCyclesOfVersion([versionId, projectId]){
-      var baseCycles = await _getCyclesOfVersion(versionId);
-      var baseCycleIds = Object.keys(baseCycles)
-      return [baseCycles, newVersionId, projectId, baseCycleIds];
-    },
-    async function cloneCycle([baseCycles, versionId, projectId, baseCycleIds]){
-      var jobDetails = [];
-      for (var j in baseCycles){
-        var jobProgressToken = await cloning(j, baseCycles, versionId, projectId, baseCycleIds);
-        var temp = await getJobDetails(jobProgressToken)
-        jobDetails.push(temp.entityId);
-        var cycleInformation = await getCycleInformation(jobDetails[cycleIterator]);
-        cycleIterator++;
-      }
+  var answer = readlineSync.keyInYN('Do you really want to clone all Testcycles from "Testbasis GST" to Version: ' + version_param + '?');
+  if (answer) {
+    async.waterfall([
+      async function getVersions(){
+        var versions = await getVersionIds(xs3ProjectId);
+        var baseVersion = versions.baseVersion;
+        return [baseVersion, xs3ProjectId];
+      },
+      async function getCyclesOfVersion([versionId, projectId]){
+        var baseCycles = await _getCyclesOfVersion(versionId);
+        var baseCycleIds = Object.keys(baseCycles)
+        return [baseCycles, newVersionId, projectId, baseCycleIds];
+      },
+      async function cloneCycle([baseCycles, versionId, projectId, baseCycleIds]){
+        var jobDetails = [];
+        for (var j in baseCycles){
+          var jobProgressToken = await cloning(j, baseCycles, versionId, projectId, baseCycleIds);
+          var temp = await getJobDetails(jobProgressToken)
+          jobDetails.push(temp.entityId);
+          var cycleInformation = await getCycleInformation(jobDetails[cycleIterator]);
+          cycleIterator++;
+        }
 
-      var folderI = 0;
-      for (var j in baseCycles){
-        var folders = await getFolders(jobDetails[folderI], projectId, versionId);
-        await iterateFolders(folders, jobDetails[folderI], projectId, versionId);
-        folderI++;
+        var folderI = 0;
+        for (var j in baseCycles){
+          var folders = await getFolders(jobDetails[folderI], projectId, versionId);
+          await iterateFolders(folders, jobDetails[folderI], projectId, versionId);
+          folderI++;
+        }
       }
+      ], function(err, result) {
+        if (err) {
+          console.log(err);
+          process.exit(1);
+        } else {}
+      });
     }
-    ], function(err, result) {
-      if (err) {
-        console.log(err);
-        process.exit(1);
-      } else {}
-    });
 }
 
 //main delete function
 function deleteCycles(){
   var answer = readlineSync.keyInYN('Do you really want to delete all Testcycles from Version: ' + version_param + '? This is irreversible!');
   if (answer) {
-    console.log('\nI hope you know what you are doing..\n');
-    async.waterfall([
-      async function getVersions(){
-        var versions = await getVersionIds(xs3ProjectId);
-        var paramVersion = versions.newVersion;
-        return paramVersion;
-      },
-      async function getCyclesOfVersion(versionId){
-        var newCycles = await _getCyclesOfVersion(versionId);
-        var newCycleIds = Object.keys(newCycles)
-        return newCycleIds;
-      },
-      async function deleteCycles(cycleIds){
-        for (var i = 0; i < cycleIds.length; i++) {
-          await _deleteCycle(cycleIds[i]);
-          if (i==cycleIds.length-1) {
-            console.log("\n" + cycleIds.length + " cycles deleted.");
+    var password = readlineSync.question('PASSWORD: ', {hideEchoBack: true});
+    if (password === pw.password){
+      console.log('\nI hope you know what you are doing..');
+      async.waterfall([
+        async function getVersions(){
+          var versions = await getVersionIds(xs3ProjectId);
+          var paramVersion = versions.newVersion;
+          return paramVersion;
+        },
+        async function getCyclesOfVersion(versionId){
+          var newCycles = await _getCyclesOfVersion(versionId);
+          var newCycleIds = Object.keys(newCycles)
+          return newCycleIds;
+        },
+        async function deleteCycles(cycleIds){
+          for (var i = 0; i < cycleIds.length; i++) {
+            await _deleteCycle(cycleIds[i]);
+            if (i==cycleIds.length-1) {
+              console.log("\n" + cycleIds.length + " cycles deleted.");
+            }
           }
+          if(cycleIds.length==0) console.log(cycleIds.length + " cycles deleted.");
         }
-        if(cycleIds.length==0) console.log(cycleIds.length + " cycles deleted.");
-      }
-    ], function(err, result) {
-        if (err) {
-          console.log(err);
-          process.exit(1);
-        } else {}
-      }
-    );
+      ], function(err, result) {
+          if (err) {
+            console.log(err);
+            process.exit(1);
+          } else {}
+        }
+      );
+    } else {
+      console.log('Wrong Password. Aborting..');
+      process.exit(1);
+    }
   } else {
     console.log('Aborting..');
     process.exit(1);
