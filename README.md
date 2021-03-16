@@ -1,6 +1,6 @@
 # Config File
 Filename: config.json
-Credentials from [Vault](https://vault.service.consul:8200/ui/vault/secrets/secret/show/users/sfw/p.lehner/jira-prod-oauth) copy as json.
+Credentials from [Vault](http://google.at) copy as json.
 Example of config.json:
 ```
 {
@@ -16,7 +16,7 @@ Example of config.json:
 
 # Usage
 
-Download the artifacts from https://bach1.evva.com/bamboo/browse/XST-ZCTC and place the config.json file in the same directory.
+Download the artifacts from **** and place the config.json file in the same directory.
 
 Default is to clone all cycles and their folders from the version 'Testbasis GST' to a given version (parameter 1, non-optional).
 
